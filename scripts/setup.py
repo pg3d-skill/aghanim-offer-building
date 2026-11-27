@@ -153,21 +153,27 @@ def github_token() -> str | None:
 
 
 def fetch_check() -> bytes:
-    token = github_token()
-    if token:
+    """Сначала без токена; токен — только если анонимно не получилось."""
+    try:
+        url = f"https://raw.githubusercontent.com/{OWNER_REPO}/{BRANCH}/{REMOTE_FILE}"
+        req = urllib.request.Request(url, headers=dict(UA))
+        with urllib.request.urlopen(req, timeout=SMALL_TIMEOUT) as resp:
+            return resp.read()
+    except Exception as anon_exc:
+        token = github_token()
+        if not token:
+            raise
         url = f"https://api.github.com/repos/{OWNER_REPO}/contents/{REMOTE_FILE}?ref={BRANCH}"
         req = urllib.request.Request(url, headers={
             **UA,
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
         })
-        with urllib.request.urlopen(req, timeout=SMALL_TIMEOUT) as resp:
-            return base64.b64decode(json.load(resp)["content"])
-
-    url = f"https://raw.githubusercontent.com/{OWNER_REPO}/{BRANCH}/{REMOTE_FILE}"
-    req = urllib.request.Request(url, headers=dict(UA))
-    with urllib.request.urlopen(req, timeout=SMALL_TIMEOUT) as resp:
-        return resp.read()
+        try:
+            with urllib.request.urlopen(req, timeout=SMALL_TIMEOUT) as resp:
+                return base64.b64decode(json.load(resp)["content"])
+        except Exception as token_exc:
+            raise RuntimeError(f"без токена: {anon_exc}; с токеном: {token_exc}") from anon_exc
 
 
 def ensure_check() -> bool:
